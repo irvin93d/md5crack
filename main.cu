@@ -5,7 +5,7 @@
 #include <string.h>
 #include "md5.hpp"
 
-#define NO_OF_PASSWORDS 4
+#define PASSWORDS_PER_KERNEL 4
 #define MAX_PASSWORD_LEN 256
 #define DIGEST_SIZE 16
 
@@ -20,16 +20,17 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 
 __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, char* pass_out) {
     // TODO
-    int id = threadIdx.x;
 	unsigned char hash_in_cache[DIGEST_SIZE];
 	memcpy(hash_in_cache, hash_in, DIGEST_SIZE);
 
-    if(id == 0) {
+	// TODO CREATE LOOP WHER IF IS
+    for(int id = threadIdx.x + blockIdx.x*blockDim.x ; id < len ; id += gridDim.x*blockDim.x) {
 		// Init varibles for password test
         char * pass_test = pass_set + MAX_PASSWORD_LEN * id;
         char pass_cache[MAX_PASSWORD_LEN];
         int pass_len = 0;
 
+		printf("Thread%d: %s\n", threadIdx.x, pass_set+id*MAX_PASSWORD_LEN);
         // Copy and find the length of the password to test
         while(pass_test[pass_len]) {
             pass_cache[pass_len] = pass_test[pass_len];
@@ -55,15 +56,15 @@ __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, c
 
 		// If crack is successful, return result
 		if(success) {
-			memcpy(pass_out, "success", DIGEST_SIZE);
+			memcpy(pass_out, pass_cache, DIGEST_SIZE);
     	}
 	}
 }
 
 int main(int argc, char const ** argv) {
     // TODO load a file and stuff
+
     std::string hash = "5f4dcc3b5aa765d61d8327deb882cf99"; // 'password'
-    char passwords[] = {"password"};
 
     std::cout << hash << std::endl;
 
@@ -78,16 +79,32 @@ int main(int argc, char const ** argv) {
 	// device memory allocations
     gpuErrchk(cudaMalloc((void**) &d_pass_out, MAX_PASSWORD_LEN));
     gpuErrchk(cudaMalloc((void**) &d_hash_in, 16));
-    gpuErrchk(cudaMalloc((void**) &d_passwords, MAX_PASSWORD_LEN)); // TODO multiply by number of passwords
+    gpuErrchk(cudaMalloc((void**) &d_passwords, PASSWORDS_PER_KERNEL * MAX_PASSWORD_LEN));
+
+	//TODO load all passwords with padding, passwords size = PASSWORDS_PER_KERNEL*MAX_PASSWORD_LEN
+    const char * dictionary[] = {"kattj'vel", "passwor", "password", "passwords"};
+	char passwords[PASSWORDS_PER_KERNEL * MAX_PASSWORD_LEN] = {0};
+	for(int p = 0 ; p < PASSWORDS_PER_KERNEL ; ++p) {
+		strcpy(passwords+p*MAX_PASSWORD_LEN, dictionary[p]);	
+	}
+
 
 	// device variable initializing
     gpuErrchk(cudaMemcpy(d_hash_in, hash_in, 16, cudaMemcpyHostToDevice));
-    gpuErrchk(cudaMemcpy(d_passwords, passwords, MAX_PASSWORD_LEN , cudaMemcpyHostToDevice)); // TODO muliply by number of passwords
+    gpuErrchk(cudaMemcpy(d_passwords, passwords, PASSWORDS_PER_KERNEL*MAX_PASSWORD_LEN , cudaMemcpyHostToDevice));
 	gpuErrchk(cudaMemset(d_pass_out, 0, MAX_PASSWORD_LEN));
 
 	// run crack
-    crackMD5<<<1,1>>>(d_hash_in, d_passwords, 1, d_pass_out);
-    
+	dim3 grid_dim(1,0,0);
+	dim3 block_dim(1,0,0); // TODO fix number of threads, make grid dynamic
+    crackMD5<<<3,3>>>(d_hash_in, d_passwords, PASSWORDS_PER_KERNEL, d_pass_out);
+   
+	cudaError_t err = cudaGetLastError();
+	if(err != cudaSuccess) {
+		printf("ERROR: %s\n", err);
+    }
+
+
 	// retrieve result
     unsigned char result[MAX_PASSWORD_LEN] = {0};
     cudaMemcpy(result, d_pass_out, MAX_PASSWORD_LEN, cudaMemcpyDeviceToHost);
@@ -103,6 +120,6 @@ int main(int argc, char const ** argv) {
 
 	// print result
     std::cout << hexdigest(hash_in) << std::endl;
-    std::cout << result << std::endl; 
+    std::cout << "Password is: " << result << std::endl; 
     return 0;
 }
