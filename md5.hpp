@@ -33,7 +33,6 @@ documentation and/or software.
 #ifndef BZF_MD5_H
 #define BZF_MD5_H
  
-#include <cstring>
 #include <iostream>
  
  
@@ -57,7 +56,7 @@ public:
   __host__ __device__ void update(const unsigned char *buf, size_type length);
   __host__ __device__ void update(const char *buf, size_type length);
   __host__ __device__ MD5& finalize();
-  void get_digest(unsigned char*);
+  __host__ __device__ void get_digest(unsigned char*);
   friend std::ostream& operator<<(std::ostream&, MD5 md5);
  
 private:

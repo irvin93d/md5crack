@@ -331,7 +331,7 @@ __host__ __device__ MD5& MD5::finalize()
  
 //////////////////////////////
 
-void MD5::get_digest(unsigned char* dst) {
+__host__ __device__ void MD5::get_digest(unsigned char* dst) {
     memcpy(dst, this->digest, 16);
 }
  
