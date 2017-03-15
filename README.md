@@ -9,3 +9,7 @@ To build the project, you must have make installed. To compile the program, just
 ```
 make setup
 ```
+
+## Thanks to
+[Original MD5 implementation](http://www.zedwood.com/article/cpp-md5-function)
+

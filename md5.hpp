@@ -1,4 +1,7 @@
 /* MD5
+ Ported to CUDA by Jonathan Ohlsson (joohls@kth.se)
+ for md5crack (https://github.com/irvin93d/md5crack)
+
  converted to C++ class by Frank Thilo (thilo@unix-ag.org)
  for bzflag (http://www.bzflag.org)
  
