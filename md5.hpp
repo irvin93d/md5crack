@@ -92,6 +92,7 @@ private:
 };
  
 std::string md5(const std::string str);
- 
+
 std::string hexdigest(unsigned char* digest);
+std::string hexencode(const char * encode);
 #endif

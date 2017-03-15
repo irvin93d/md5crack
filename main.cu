@@ -64,7 +64,7 @@ int main(int argc, char const ** argv) {
     unsigned char result[MAX_PASSWORD_LEN];
     cudaMemcpy(result, d_pass_out, MAX_PASSWORD_LEN, cudaMemcpyDeviceToHost);
     
-    
+    std::cout << hexencode(hash.c_str()) << std::endl;
     std::cout << hexdigest(result) << std::endl;
 
     return 0;
