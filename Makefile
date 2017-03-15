@@ -1,6 +1,9 @@
 CC = nvcc
 FLAGS = -x cu
 
+main: main.cpp md5.o
+	$(CC) md5.o main.cpp 
+
 calcMD5: md5.o calcMD5.o
 	$(CC) calcMD5.o md5.o -o md5 
 
