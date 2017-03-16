@@ -21,6 +21,8 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
     }
 }
 
+enum STATE {DICTIONARY, BRUTEFORCE, DONE};
+
 __device__ bool password_found = false;
 
 __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, char* pass_out) {
@@ -68,8 +70,6 @@ __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, c
 
 int main(int argc, char const ** argv) {
 
-	
-
     char const * hash  = argv[1]; // 'password'
 
 	std::ifstream file("crackstation-human-only.txt");
@@ -94,18 +94,21 @@ int main(int argc, char const ** argv) {
     gpuErrchk(cudaMalloc((void**) &d_pass_out, MAX_PASSWORD_LEN));
     gpuErrchk(cudaMalloc((void**) &d_hash_in, 16));
     gpuErrchk(cudaMalloc((void**) &d_passwords, PASSWORDS_PER_KERNEL * MAX_PASSWORD_LEN));
-
+    size_t password_count = 0;
 	int password_found = 0; 
 	while(!password_found) {
 
 		//load a chunk of passwords. Passwords are null terminated
 		char passwords[PASSWORDS_PER_KERNEL * MAX_PASSWORD_LEN] = {0};
 		std::string str;
+        size_t current_password_count = 0;
         for(int p = 0 ; p < PASSWORDS_PER_KERNEL ; ++p) {
             if(!std::getline(file, str)) {
                 password_found = -1;
                 break;
             }
+            
+            ++current_password_count;
 
 			strcpy(passwords+p*MAX_PASSWORD_LEN, str.c_str()); // load file row to padded password list
 			passwords[p*MAX_PASSWORD_LEN + str.length()-1] = 0; // exchange last character '\n' to '\0'
@@ -115,9 +118,9 @@ int main(int argc, char const ** argv) {
 		gpuErrchk(cudaMemcpy(d_hash_in, hash_in, 16, cudaMemcpyHostToDevice));
 		gpuErrchk(cudaMemcpy(d_passwords, passwords, PASSWORDS_PER_KERNEL*MAX_PASSWORD_LEN , cudaMemcpyHostToDevice));
 		gpuErrchk(cudaMemset(d_pass_out, 0, MAX_PASSWORD_LEN));
-
+        password_count += current_password_count;
 		// run crack
-		crackMD5<<<(PASSWORDS_PER_KERNEL+BLOCK_DIM-1)/BLOCK_DIM,BLOCK_DIM>>>(d_hash_in, d_passwords, PASSWORDS_PER_KERNEL, d_pass_out);
+		crackMD5<<<(PASSWORDS_PER_KERNEL+BLOCK_DIM-1)/BLOCK_DIM,BLOCK_DIM>>>(d_hash_in, d_passwords, current_password_count, d_pass_out);
 		cudaError_t err = cudaGetLastError();
 		if(err != cudaSuccess) {
 			printf("ERROR: %s\n", err);
@@ -142,5 +145,7 @@ int main(int argc, char const ** argv) {
    	else
     	std::cout << "Password not found" << std::endl; 
 
+    std::cout << "Tried " << password_count << " passwords" << std::endl;
 	return 0;
 }
+
