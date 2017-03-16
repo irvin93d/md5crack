@@ -7,10 +7,10 @@
 #include <fstream>
 #include <errno.h>
 
-#define PASSWORDS_PER_KERNEL 21
+#define PASSWORDS_PER_KERNEL 64
 #define MAX_PASSWORD_LEN 256
 #define DIGEST_SIZE 16
-#define BLOCK_DIM 256
+#define BLOCK_DIM 8
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -21,21 +21,18 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
     }
 }
 
-__device__ bool passwordFound = false;
+__device__ bool password_found = false;
 
 __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, char* pass_out) {
 	unsigned char hash_in_cache[DIGEST_SIZE];
 	memcpy(hash_in_cache, hash_in, DIGEST_SIZE);
 
-	// TODO CREATE LOOP WHER IF IS
-	
-    for(int id = threadIdx.x + blockIdx.x*blockDim.x ; id < len ; id += gridDim.x*blockDim.x) {
+    for(int id = threadIdx.x + blockIdx.x*blockDim.x ; id < len && !password_found ; id += gridDim.x*blockDim.x) {
 		// Init varibles for password test
         char * pass_test = pass_set + MAX_PASSWORD_LEN * id;
         char pass_cache[MAX_PASSWORD_LEN];
         int pass_len = 0;
 
-		printf("Thread%d: %s\n", threadIdx.x, pass_set+id*MAX_PASSWORD_LEN);
         // Copy and find the length of the password to test
         while(pass_test[pass_len]) {
             pass_cache[pass_len] = pass_test[pass_len];
@@ -59,32 +56,31 @@ __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, c
 			}
 		}
 
-		// TODO potential race condition
-		if(passwordFound){
+		if(password_found)
 			break;
-		}
-
 		// If crack is successful, return result
 		if(success) {
-			passwordFound = true;
+			password_found = true;
 			memcpy(pass_out, pass_cache, DIGEST_SIZE);
     	}
 	}
 }
 
 int main(int argc, char const ** argv) {
-    // TODO load a file and stuff
 
-    std::string hash = "5f4dcc3b5aa765d61d8327deb882cf99"; // 'password'
+	
 
-	std::ifstream file("List-john.txt");
+    std::string hash = "5f86bdf702e28db0b889adece851dfd9"; // 'password'
+
+	std::ifstream file("crackstation-human-only.txt");
 	if(!file) {
 		std::cerr << "Error: " << strerror(errno) << std::endl;
 		return(-1);
 	}
 
-    std::cout << hash << std::endl;
+    std::cout << "Hash: " << hash << std::endl;
 
+	unsigned char result[MAX_PASSWORD_LEN] = {0};
 	unsigned char hash_in[17];
 	strcpy( (char*) hash_in, hexencode(hash.c_str() ).c_str());
 
@@ -98,44 +94,50 @@ int main(int argc, char const ** argv) {
     gpuErrchk(cudaMalloc((void**) &d_hash_in, 16));
     gpuErrchk(cudaMalloc((void**) &d_passwords, PASSWORDS_PER_KERNEL * MAX_PASSWORD_LEN));
 
-	//load all passwords. Passwords are padded with '\0'
-	char passwords[PASSWORDS_PER_KERNEL * MAX_PASSWORD_LEN] = {0};
-	for(int p = 0 ; p < PASSWORDS_PER_KERNEL ; ++p) {
-		std::string str;
-		if(!std::getline(file, str))
-			break;
+	int password_found = 0; // step 0 goes through dictionary, step 1 is bruteforce, step 2 is complete
+	while(!password_found) {
 
-		strcpy(passwords+p*MAX_PASSWORD_LEN, str.c_str()); // load file row to padded password list
-		passwords[p*MAX_PASSWORD_LEN + str.length()-1] = 0; // exchange last character '\n' to '\0'
+		//load all passwords. Passwords are padded with '\0'
+		char passwords[PASSWORDS_PER_KERNEL * MAX_PASSWORD_LEN] = {0};
+		for(int p = 0 ; p < PASSWORDS_PER_KERNEL ; ++p) {
+			std::string str;
+			if(!std::getline(file, str))
+				password_found = -1;
+
+			strcpy(passwords+p*MAX_PASSWORD_LEN, str.c_str()); // load file row to padded password list
+			passwords[p*MAX_PASSWORD_LEN + str.length()-1] = 0; // exchange last character '\n' to '\0'
+		}
+
+		// device variable initializing
+		gpuErrchk(cudaMemcpy(d_hash_in, hash_in, 16, cudaMemcpyHostToDevice));
+		gpuErrchk(cudaMemcpy(d_passwords, passwords, PASSWORDS_PER_KERNEL*MAX_PASSWORD_LEN , cudaMemcpyHostToDevice));
+		gpuErrchk(cudaMemset(d_pass_out, 0, MAX_PASSWORD_LEN));
+
+		// run crack
+		crackMD5<<<(PASSWORDS_PER_KERNEL+BLOCK_DIM-1)/BLOCK_DIM,BLOCK_DIM>>>(d_hash_in, d_passwords, PASSWORDS_PER_KERNEL, d_pass_out);
+		cudaError_t err = cudaGetLastError();
+		if(err != cudaSuccess) {
+			printf("ERROR: %s\n", err);
+		}
+
+		// retrieve result
+		cudaMemcpy(result, d_pass_out, MAX_PASSWORD_LEN, cudaMemcpyDeviceToHost);
+
+		if(result[0]){
+			password_found = 1;		
+		}
 	}
 
-	// device variable initializing
-    gpuErrchk(cudaMemcpy(d_hash_in, hash_in, 16, cudaMemcpyHostToDevice));
-    gpuErrchk(cudaMemcpy(d_passwords, passwords, PASSWORDS_PER_KERNEL*MAX_PASSWORD_LEN , cudaMemcpyHostToDevice));
-	gpuErrchk(cudaMemset(d_pass_out, 0, MAX_PASSWORD_LEN));
-
-	// run crack
-    crackMD5<<<(PASSWORDS_PER_KERNEL+BLOCK_DIM-1)/BLOCK_DIM,BLOCK_DIM>>>(d_hash_in, d_passwords, PASSWORDS_PER_KERNEL, d_pass_out);
-	cudaError_t err = cudaGetLastError();
-	if(err != cudaSuccess) {
-		printf("ERROR: %s\n", err);
-    }
-
-	// retrieve result
-    unsigned char result[MAX_PASSWORD_LEN] = {0};
-    cudaMemcpy(result, d_pass_out, MAX_PASSWORD_LEN, cudaMemcpyDeviceToHost);
-
-  	// free device memory
+	// free device memory
 	gpuErrchk(cudaFree(d_pass_out));
 	gpuErrchk(cudaFree(d_hash_in));
 	gpuErrchk(cudaFree(d_passwords));
 
-	// TODO test if there's a result
-
-
 	// print result
-    std::cout << hexdigest(hash_in) << std::endl;
-    std::cout << "Password is: " << result << std::endl; 
-   
+	if(password_found == 1)
+    	std::cout << "Password is: " << result << std::endl; 
+   	else
+    	std::cout << "Password not found" << std::endl; 
+
 	return 0;
 }
