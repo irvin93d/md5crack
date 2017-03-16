@@ -7,7 +7,7 @@
 #include <fstream>
 #include <errno.h>
 
-#define PASSWORDS_PER_KERNEL 4
+#define PASSWORDS_PER_KERNEL 21
 #define MAX_PASSWORD_LEN 256
 #define DIGEST_SIZE 16
 #define BLOCK_DIM 256
@@ -20,6 +20,8 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
         if (abort) exit(code);
     }
 }
+
+__device__ bool passwordFound = false;
 
 __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, char* pass_out) {
 	unsigned char hash_in_cache[DIGEST_SIZE];
@@ -57,8 +59,14 @@ __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, c
 			}
 		}
 
+		// TODO potential race condition
+		if(passwordFound){
+			break;
+		}
+
 		// If crack is successful, return result
 		if(success) {
+			passwordFound = true;
 			memcpy(pass_out, pass_cache, DIGEST_SIZE);
     	}
 	}
@@ -90,17 +98,15 @@ int main(int argc, char const ** argv) {
     gpuErrchk(cudaMalloc((void**) &d_hash_in, 16));
     gpuErrchk(cudaMalloc((void**) &d_passwords, PASSWORDS_PER_KERNEL * MAX_PASSWORD_LEN));
 
-
-    const char * dictionary[] = {"kattj'vel", "passwor", "password", "passwords"};
-	//std::string password; 
-	//while (std::getline(file, str)) {
-	//	std::cout << str << std::endl;	
-	//}
-
-	//TODO load all passwords with padding, passwords size = PASSWORDS_PER_KERNEL*MAX_PASSWORD_LEN
+	//load all passwords. Passwords are padded with '\0'
 	char passwords[PASSWORDS_PER_KERNEL * MAX_PASSWORD_LEN] = {0};
 	for(int p = 0 ; p < PASSWORDS_PER_KERNEL ; ++p) {
-		strcpy(passwords+p*MAX_PASSWORD_LEN, dictionary[p]);	
+		std::string str;
+		if(!std::getline(file, str))
+			break;
+
+		strcpy(passwords+p*MAX_PASSWORD_LEN, str.c_str()); // load file row to padded password list
+		passwords[p*MAX_PASSWORD_LEN + str.length()-1] = 0; // exchange last character '\n' to '\0'
 	}
 
 	// device variable initializing
