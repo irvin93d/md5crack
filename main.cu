@@ -7,7 +7,7 @@
 #include <fstream>
 #include <errno.h>
 
-#define PASSWORDS_PER_KERNEL 4096
+#define PASSWORDS_PER_KERNEL 8192
 #define MAX_PASSWORD_LEN 256
 #define DIGEST_SIZE 16
 #define BLOCK_DIM 256
@@ -124,8 +124,8 @@ int main(int argc, char const ** argv) {
 		gpuErrchk(cudaMemset(d_pass_out, 0, MAX_PASSWORD_LEN));
         password_count += current_password_count;
 		// run crack
-		//crackMD5<<<(PASSWORDS_PER_KERNEL+BLOCK_DIM-1)/BLOCK_DIM,BLOCK_DIM>>>(d_hash_in, d_passwords, current_password_count, d_pass_out);
-		crackMD5<<<1024,256>>>(d_hash_in, d_passwords, current_password_count, d_pass_out);
+		crackMD5<<<(PASSWORDS_PER_KERNEL+BLOCK_DIM-1)/BLOCK_DIM,BLOCK_DIM>>>(d_hash_in, d_passwords, current_password_count, d_pass_out);
+		//crackMD5<<<1024,256>>>(d_hash_in, d_passwords, current_password_count, d_pass_out);
 		cudaError_t err = cudaGetLastError();
 		if(err != cudaSuccess) {
 			printf("ERROR: %s\n", err);
