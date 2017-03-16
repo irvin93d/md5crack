@@ -7,7 +7,7 @@
 #include <fstream>
 #include <errno.h>
 
-#define PASSWORDS_PER_KERNEL 20480
+#define PASSWORDS_PER_KERNEL 4096
 #define MAX_PASSWORD_LEN 256
 #define DIGEST_SIZE 16
 #define BLOCK_DIM 256
@@ -30,6 +30,7 @@ __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, c
 	memcpy(hash_in_cache, hash_in, DIGEST_SIZE);
 
     for(int id = threadIdx.x + blockIdx.x*blockDim.x ; id < len && !password_found ; id += gridDim.x*blockDim.x) {
+		//printf("lol\n");
 		// Init varibles for password test
         char * pass_test = pass_set + MAX_PASSWORD_LEN * id;
         char pass_cache[MAX_PASSWORD_LEN];
@@ -57,6 +58,8 @@ __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, c
 				break;
 			}
 		}
+
+		//printf("T%i: %s\n", id, pass_test);
 
 		if(password_found)
 			break;
@@ -107,11 +110,12 @@ int main(int argc, char const ** argv) {
                 password_found = -1;
                 break;
             }
-            
-            ++current_password_count;
+           
 
+            ++current_password_count;
 			strcpy(passwords+p*MAX_PASSWORD_LEN, str.c_str()); // load file row to padded password list
-			passwords[p*MAX_PASSWORD_LEN + str.length()-1] = 0; // exchange last character '\n' to '\0'
+			passwords[p*MAX_PASSWORD_LEN + str.length()] = '\0'; // exchange last character '\n' to '\0'
+			//	std::cout << passwords + p*MAX_PASSWORD_LEN << std::endl;
 		}
 
 		// device variable initializing
@@ -120,7 +124,8 @@ int main(int argc, char const ** argv) {
 		gpuErrchk(cudaMemset(d_pass_out, 0, MAX_PASSWORD_LEN));
         password_count += current_password_count;
 		// run crack
-		crackMD5<<<(PASSWORDS_PER_KERNEL+BLOCK_DIM-1)/BLOCK_DIM,BLOCK_DIM>>>(d_hash_in, d_passwords, current_password_count, d_pass_out);
+		//crackMD5<<<(PASSWORDS_PER_KERNEL+BLOCK_DIM-1)/BLOCK_DIM,BLOCK_DIM>>>(d_hash_in, d_passwords, current_password_count, d_pass_out);
+		crackMD5<<<1024,256>>>(d_hash_in, d_passwords, current_password_count, d_pass_out);
 		cudaError_t err = cudaGetLastError();
 		if(err != cudaSuccess) {
 			printf("ERROR: %s\n", err);
@@ -133,7 +138,6 @@ int main(int argc, char const ** argv) {
 			password_found = 1;		
 		}
 	}
-
 	// free device memory
 	gpuErrchk(cudaFree(d_pass_out));
 	gpuErrchk(cudaFree(d_hash_in));
