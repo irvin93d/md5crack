@@ -7,10 +7,10 @@
 #include <fstream>
 #include <errno.h>
 
-#define PASSWORDS_PER_KERNEL 64
+#define PASSWORDS_PER_KERNEL 20480
 #define MAX_PASSWORD_LEN 256
 #define DIGEST_SIZE 16
-#define BLOCK_DIM 8
+#define BLOCK_DIM 256
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -70,7 +70,7 @@ int main(int argc, char const ** argv) {
 
 	
 
-    std::string hash = "5f86bdf702e28db0b889adece851dfd9"; // 'password'
+    char const * hash  = argv[1]; // 'password'
 
 	std::ifstream file("crackstation-human-only.txt");
 	if(!file) {
@@ -82,7 +82,7 @@ int main(int argc, char const ** argv) {
 
 	unsigned char result[MAX_PASSWORD_LEN] = {0};
 	unsigned char hash_in[17];
-	strcpy( (char*) hash_in, hexencode(hash.c_str() ).c_str());
+	strcpy( (char*) hash_in, hexencode(hash).c_str());
 
 	// device declerations
     char * d_pass_out;
