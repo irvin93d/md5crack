@@ -79,9 +79,10 @@ int main(int argc, char const ** argv) {
 	}
 
     std::cout << "Hash: " << hash << std::endl;
-
+    
 	unsigned char result[MAX_PASSWORD_LEN] = {0};
-	unsigned char hash_in[17];
+	// Convert the hex representation of the hash
+    unsigned char hash_in[17];
 	strcpy( (char*) hash_in, hexencode(hash).c_str());
 
 	// device declerations
@@ -94,15 +95,17 @@ int main(int argc, char const ** argv) {
     gpuErrchk(cudaMalloc((void**) &d_hash_in, 16));
     gpuErrchk(cudaMalloc((void**) &d_passwords, PASSWORDS_PER_KERNEL * MAX_PASSWORD_LEN));
 
-	int password_found = 0; // step 0 goes through dictionary, step 1 is bruteforce, step 2 is complete
+	int password_found = 0; 
 	while(!password_found) {
 
-		//load all passwords. Passwords are padded with '\0'
+		//load a chunk of passwords. Passwords are null terminated
 		char passwords[PASSWORDS_PER_KERNEL * MAX_PASSWORD_LEN] = {0};
-		for(int p = 0 ; p < PASSWORDS_PER_KERNEL ; ++p) {
-			std::string str;
-			if(!std::getline(file, str))
-				password_found = -1;
+		std::string str;
+        for(int p = 0 ; p < PASSWORDS_PER_KERNEL ; ++p) {
+            if(!std::getline(file, str)) {
+                password_found = -1;
+                break;
+            }
 
 			strcpy(passwords+p*MAX_PASSWORD_LEN, str.c_str()); // load file row to padded password list
 			passwords[p*MAX_PASSWORD_LEN + str.length()-1] = 0; // exchange last character '\n' to '\0'
