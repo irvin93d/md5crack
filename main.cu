@@ -111,7 +111,75 @@ int cpu_brute_force(unsigned char const * hash_in, unsigned char * res) {
         } while(next_pass(gen_pass));
     }
     return -1;
+}
 
+// Must run with griddim == blockdim == ASCII_MAX-ASCII_MIN and len >= 3
+__global__ void gpu_brute_crack_md5(unsigned char const * hash, int len, char * pass_out){
+	unsigned char hash_cache[DIGEST_SIZE];
+	memcpy(hash_cache, hash, DIGEST_SIZE);
+
+	unsigned char pass[MAX_PASSWORD_LEN] = {0};
+	for(int i = 0 ; i < len-2 ; ++i) {
+		pass[i] = ASCII_MIN;
+	}
+
+	// set last character to threadid and let this be constant to avoid divergence
+	pass[len-1] = threadIdx.x + ASCII_MIN;
+	pass[len-2] = blockIdx.x + ASCII_MIN; 
+
+	while(pass[len-3] != ASCII_MAX) {
+		pass[0]++;
+		if(pass[0] == ASCII_MAX) {
+			pass[0] = ASCII_MIN;
+			for(int i = 1 ; i < len-2 && pass[i]++ == ASCII_MAX ; ++i) {
+				pass[i] = ASCII_MIN;
+			};
+		}
+	   	// Create hash for password to test
+		MD5 md5((char*) pass, len);
+              
+		// Retrieve created hash
+        unsigned char result[DIGEST_SIZE]; // 128 bit
+        md5.get_digest(result); // load the result
+    
+		// If crack is successful, return result
+		if(digest_equal(hash_cache, result)) {
+			// If 2 different passwords gives same (and correct) hash,
+			// only one password is returned
+			printf("KERNEL SAYS YEY\n");
+			int old = atomicAdd(&password_found,1);
+			if(!old){
+				memcpy(pass_out, pass, DIGEST_SIZE);
+    		}
+		}
+	}
+}
+
+int gpu_brute_crack(unsigned char const * hash, int len) {
+
+    unsigned char * d_hash;
+    char * d_pass_out;
+    gpuErrchk(cudaMalloc((void**) &d_hash, 16));
+    gpuErrchk(cudaMalloc((void**) &d_pass_out, MAX_PASSWORD_LEN));
+	
+	gpuErrchk(cudaMemcpy(d_hash, hash, 16, cudaMemcpyHostToDevice));
+	
+	gpu_brute_crack_md5<<<ASCII_MAX-ASCII_MIN, ASCII_MAX-ASCII_MIN>>>(d_hash, len, d_pass_out);
+	cudaError_t err = cudaGetLastError();
+	if(err != cudaSuccess) {
+		printf("ERROR: %s\n", err);
+	}
+	
+	char pass[MAX_PASSWORD_LEN];
+	cudaMemcpy(pass, d_pass_out, MAX_PASSWORD_LEN, cudaMemcpyDeviceToHost);
+	
+	std::cout << "Password:" << pass << std::endl;
+
+	cudaFree(d_hash);
+	cudaFree(d_pass_out);
+
+	printf("End\n");
+	return 0;
 }
 
 int cpu_crack(unsigned char const * hash_in, std::ifstream* file, unsigned char * res) {
@@ -195,10 +263,12 @@ int gpu_crack(unsigned char const * hash_in, std::ifstream * file, unsigned char
     return password_found;
 }
 
+
+
 int main(int argc, char const ** argv) {
-    if(argc < 2) {
-        std::cout << "missing input" << std::endl;
-        exit(-1);
+	if(argc < 2) {
+		std::cout << "missing input" << std::endl;
+		exit(-1);
     }
 
     char const * hash  = argv[1]; // 'password'
