@@ -23,7 +23,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 
 enum STATE {DICTIONARY, BRUTEFORCE, DONE};
 
-__device__ bool password_found = false;
+__device__ int password_found = 0;
 
 __device__ int digest_equal(unsigned char const * a, unsigned char const * b){
 	for(int i = 0 ; i < DIGEST_SIZE ; ++i ) {
@@ -39,7 +39,6 @@ __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, c
 	memcpy(hash_in_cache, hash_in, DIGEST_SIZE);
 
     for(int id = threadIdx.x + blockIdx.x*blockDim.x ; id < len && !password_found ; id += gridDim.x*blockDim.x) {
-		//printf("lol\n");
 		// Init varibles for password test
         char * pass_test = pass_set + MAX_PASSWORD_LEN * id;
         char pass_cache[MAX_PASSWORD_LEN];
@@ -59,13 +58,15 @@ __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, c
         unsigned char result[DIGEST_SIZE]; // 128 bit
         md5.get_digest(result); // load the result
     
-		if(password_found)
-			break;
 		// If crack is successful, return result
 		if(digest_equal(hash_in_cache, result)) {
-			password_found = true;
-			memcpy(pass_out, pass_cache, DIGEST_SIZE);
-    	}
+			// If 2 different passwords gives same (and correct) hash,
+			// only one password is returned
+			int old = atomicAdd(&password_found,1);
+			if(!old){
+				memcpy(pass_out, pass_cache, DIGEST_SIZE);
+    		}
+		}
 	}
 }
 
