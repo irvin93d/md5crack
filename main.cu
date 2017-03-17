@@ -298,7 +298,7 @@ int main(int argc, char const ** argv) {
             }
         }
     }
-/*
+
     if(use_gpu) {
         std::cout << "Running crack on GPU" << std::endl;
         password_found = gpu_crack(hash_in, &file, result);
@@ -306,7 +306,7 @@ int main(int argc, char const ** argv) {
         std::cout << "Running crack on CPU" << std::endl;
         password_found = cpu_crack(hash_in, &file, result);
     }
-*/
+
 	// print result
 	if(password_found)
     	std::cout << "Password is: " << result << std::endl; 
