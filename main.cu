@@ -25,6 +25,15 @@ enum STATE {DICTIONARY, BRUTEFORCE, DONE};
 
 __device__ bool password_found = false;
 
+__device__ int digest_equal(unsigned char const * a, unsigned char const * b){
+	for(int i = 0 ; i < DIGEST_SIZE ; ++i ) {
+		if(a[i] != b[i]) {	
+			return 0;
+		}
+	}
+	return 1;
+}
+
 __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, char* pass_out) {
 	unsigned char hash_in_cache[DIGEST_SIZE];
 	memcpy(hash_in_cache, hash_in, DIGEST_SIZE);
@@ -50,21 +59,10 @@ __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, c
         unsigned char result[DIGEST_SIZE]; // 128 bit
         md5.get_digest(result); // load the result
     
-		// Test created hash against hash to crack
-		int success = 1;
-		for(int i = 0 ; i < DIGEST_SIZE ; ++i ) {
-			if(result[i] != hash_in_cache[i]) {	
-				success = 0;	
-				break;
-			}
-		}
-
-		//printf("T%i: %s\n", id, pass_test);
-
 		if(password_found)
 			break;
 		// If crack is successful, return result
-		if(success) {
+		if(digest_equal(hash_in_cache, result)) {
 			password_found = true;
 			memcpy(pass_out, pass_cache, DIGEST_SIZE);
     	}
