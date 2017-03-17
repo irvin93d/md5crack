@@ -25,6 +25,8 @@ enum STATE {DICTIONARY, BRUTEFORCE, DONE};
 
 __device__ int password_found = 0;
 
+static size_t password_count = 0;
+
 __device__ int digest_equal(unsigned char const * a, unsigned char const * b){
 	for(int i = 0 ; i < DIGEST_SIZE ; ++i ) {
 		if(a[i] != b[i]) {	
@@ -70,34 +72,41 @@ __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, c
 	}
 }
 
-int main(int argc, char const ** argv) {
+int cpu_crack(unsigned char const * hash_in, std::ifstream* file, unsigned char * res) {
+    std::string s;
+    // Read each line
+    while(std::getline(*file, s)){
+        MD5 md5(s.c_str(), s.length());
+        password_count++;
+        unsigned char result[DIGEST_SIZE];
+        md5.get_digest(result);
+        
+        // Compare result with input hash
+        bool eq = true;
+        for(int i = 0; i < DIGEST_SIZE; i++) {
+            if(hash_in[i] != result[i]) {
+                eq = false;
+                break;
+            }
+        }
+        if(eq) {
+            memcpy(res, s.c_str(), s.length() + 1);
+            return 1;
+        }
+    }
+    return -1;
+}
 
-    char const * hash  = argv[1]; // 'password'
-
-	std::ifstream file("crackstation-human-only.txt");
-	if(!file) {
-		std::cerr << "Error: " << strerror(errno) << std::endl;
-		return(-1);
-	}
-
-    std::cout << "Hash: " << hash << std::endl;
-    
-	unsigned char result[MAX_PASSWORD_LEN] = {0};
-	// Convert the hex representation of the hash
-    unsigned char hash_in[17];
-	strcpy( (char*) hash_in, hexencode(hash).c_str());
-
+int gpu_crack(unsigned char const * hash_in, std::ifstream * file, unsigned char * result) {
 	// device declerations
     char * d_pass_out;
     unsigned char * d_hash_in;
     char * d_passwords;
-
+    int password_found = 0;
 	// device memory allocations
     gpuErrchk(cudaMalloc((void**) &d_pass_out, MAX_PASSWORD_LEN));
     gpuErrchk(cudaMalloc((void**) &d_hash_in, 16));
     gpuErrchk(cudaMalloc((void**) &d_passwords, PASSWORDS_PER_KERNEL * MAX_PASSWORD_LEN));
-    size_t password_count = 0;
-	int password_found = 0; 
 	while(!password_found) {
 
 		//load a chunk of passwords. Passwords are null terminated
@@ -105,7 +114,7 @@ int main(int argc, char const ** argv) {
 		std::string str;
         size_t current_password_count = 0;
         for(int p = 0 ; p < PASSWORDS_PER_KERNEL ; ++p) {
-            if(!std::getline(file, str)) {
+            if(!std::getline(*file, str)) {
                 password_found = -1;
                 break;
             }
@@ -141,6 +150,45 @@ int main(int argc, char const ** argv) {
 	gpuErrchk(cudaFree(d_pass_out));
 	gpuErrchk(cudaFree(d_hash_in));
 	gpuErrchk(cudaFree(d_passwords));
+    return password_found;
+}
+
+int main(int argc, char const ** argv) {
+    if(argc < 2) {
+        std::cout << "missing input" << std::endl;
+        exit(-1);
+    }
+
+    char const * hash  = argv[1]; // 'password'
+
+	std::ifstream file("crackstation-human-only.txt");
+	if(!file) {
+		std::cerr << "Error: " << strerror(errno) << std::endl;
+		return(-1);
+	}
+
+    std::cout << "Hash: " << hash << std::endl;
+    
+	unsigned char result[MAX_PASSWORD_LEN] = {0};
+	// Convert the hex representation of the hash into its numerical value
+    unsigned char hash_in[17];
+    hexencode(hash, hash_in);
+    
+	int password_found = 0; 
+
+    if(argc > 2) {
+        std::string arg(argv[2]);
+        if(arg == "-cpu") {
+            std::cout << "Running crack on CPU" << std::endl;
+            password_found = cpu_crack(hash_in, &file, result);
+        } else if (arg == "-gpu") {
+            std::cout << "Running crack on GPU" << std::endl;
+            password_found = gpu_crack(hash_in, &file, result);
+        }
+    } else {
+        std::cout << "Running crack on GPU" << std::endl;
+        password_found = gpu_crack(hash_in, &file, result);
+    }
 
 	// print result
 	if(password_found == 1)
