@@ -371,12 +371,9 @@ std::string hexdigest(unsigned char * digest) {
 }
 
 // encode hex representation to binary
-std::string hexencode(const char * encode) {
-
-	char buf[17];
+void hexencode(char const * encode, unsigned char *buf) {
 	for(int i=0 ; i<16 ; i++){
 		sscanf(encode + 2*i, "%02x", buf + i);
 	}
 	buf[16] = 0;
-	return std::string(buf);
 }
