@@ -217,28 +217,48 @@ int main(int argc, char const ** argv) {
     hexencode(hash, hash_in);
     
 	int password_found = 0; 
-
+    bool use_gpu = true;
+    bool use_brute = true;
     if(argc > 2) {
-        std::string arg(argv[2]);
-        if(arg == "-cpu") {
-            std::cout << "Running crack on CPU" << std::endl;
-            password_found = cpu_brute_force(hash_in, result);
-        } else if (arg == "-gpu") {
-            std::cout << "Running crack on GPU" << std::endl;
-            password_found = gpu_crack(hash_in, &file, result);
+        for(int i = 2; i < argc; i++) {
+            std::string arg(argv[i]);
+            if(arg == "-cpu") {
+                use_gpu = false;
+            } else if (arg == "-nb") {
+                use_brute = false;
+            }
         }
-    } else {
+    }
+
+    if(use_gpu) {
         std::cout << "Running crack on GPU" << std::endl;
         password_found = gpu_crack(hash_in, &file, result);
+    } else {
+        std::cout << "Running crack on CPU" << std::endl;
+        password_found = cpu_crack(hash_in, &file, result);
     }
 
 	// print result
-	if(password_found == 1)
+	if(password_found)
     	std::cout << "Password is: " << result << std::endl; 
    	else
-    	std::cout << "Password not found" << std::endl; 
-
+    	std::cout << "Password not found in dictionary" << std::endl; 
     std::cout << "Tried " << password_count << " passwords" << std::endl;
+
+    if(!password_found && use_brute) {
+        std::cout << "Starting brute force" << std::endl;
+        if(use_gpu){
+
+        } else {
+            password_found = cpu_brute_force(hash_in, result);
+        }
+
+        if(password_found == 1)
+            std::cout << "Password is: " << result << std::endl;
+
+        std::cout << "Tried " << password_count << " passwords" << std::endl;
+    }
+
 	return 0;
 }
 
