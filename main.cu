@@ -155,7 +155,7 @@ __global__ void gpu_brute_crack_md5(unsigned char const * hash, int len, char * 
 	}
 }
 
-int gpu_brute_crack(unsigned char const * hash, int len) {
+int gpu_brute_force(unsigned char const * hash, int len, unsigned char * res) {
 
     unsigned char * d_hash;
     char * d_pass_out;
@@ -170,15 +170,14 @@ int gpu_brute_crack(unsigned char const * hash, int len) {
 		printf("ERROR: %s\n", err);
 	}
 	
-	char pass[MAX_PASSWORD_LEN];
-	cudaMemcpy(pass, d_pass_out, MAX_PASSWORD_LEN, cudaMemcpyDeviceToHost);
+	cudaMemcpy(res, d_pass_out, MAX_PASSWORD_LEN, cudaMemcpyDeviceToHost);
 	
-	std::cout << "Password:" << pass << std::endl;
-
 	cudaFree(d_hash);
 	cudaFree(d_pass_out);
 
-	printf("End\n");
+	if(res[0]) {
+		return 1;
+	}
 	return 0;
 }
 
@@ -299,7 +298,7 @@ int main(int argc, char const ** argv) {
             }
         }
     }
-
+/*
     if(use_gpu) {
         std::cout << "Running crack on GPU" << std::endl;
         password_found = gpu_crack(hash_in, &file, result);
@@ -307,7 +306,7 @@ int main(int argc, char const ** argv) {
         std::cout << "Running crack on CPU" << std::endl;
         password_found = cpu_crack(hash_in, &file, result);
     }
-
+*/
 	// print result
 	if(password_found)
     	std::cout << "Password is: " << result << std::endl; 
@@ -318,15 +317,15 @@ int main(int argc, char const ** argv) {
     if(!password_found && use_brute) {
         std::cout << "Starting brute force" << std::endl;
         if(use_gpu){
-
+			password_found = gpu_brute_force(hash_in, 4, result);
         } else {
             password_found = cpu_brute_force(hash_in, result);
+			std::cout << "Tried " << password_count << " passwords" << std::endl;
         }
 
         if(password_found == 1)
             std::cout << "Password is: " << result << std::endl;
 
-        std::cout << "Tried " << password_count << " passwords" << std::endl;
     }
 
 	return 0;
