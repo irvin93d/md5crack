@@ -11,6 +11,8 @@
 #define MAX_PASSWORD_LEN 256
 #define DIGEST_SIZE 16
 #define BLOCK_DIM 256
+#define ASCII_MIN 32
+#define ASCII_MAX 255
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -70,6 +72,46 @@ __global__ void crackMD5(unsigned char* hash_in, char* pass_set, uint32_t len, c
     		}
 		}
 	}
+}
+
+int next_pass(char * pass) {
+    if(pass[0] == 0) return 0; // last character, done
+    if(pass[0] == (char) ASCII_MAX) {
+        pass[0] = (char) ASCII_MIN;
+        return next_pass(pass + sizeof(char));
+    }
+    pass[0]++;
+    return 1;
+
+}
+
+int cpu_brute_force(unsigned char const * hash_in, unsigned char * res) {
+    char gen_pass[MAX_PASSWORD_LEN];
+    for(int i = 1; i < 6; ++i) {
+        memset(gen_pass, ASCII_MIN, i);
+        gen_pass[i] = 0;
+        do {
+            MD5 md5(gen_pass, i);
+            password_count++;
+            unsigned char result[DIGEST_SIZE];
+            md5.get_digest(result);
+            
+            // Compare result with input hash
+            bool eq = true;
+            for(int j = 0; j < DIGEST_SIZE; j++) {
+                if(hash_in[j] != result[j]) {
+                    eq = false;
+                    break;
+                }
+            }
+            if(eq) {
+                memcpy(res, gen_pass, i + 1);
+                return 1;
+            }
+        } while(next_pass(gen_pass));
+    }
+    return -1;
+
 }
 
 int cpu_crack(unsigned char const * hash_in, std::ifstream* file, unsigned char * res) {
@@ -180,7 +222,7 @@ int main(int argc, char const ** argv) {
         std::string arg(argv[2]);
         if(arg == "-cpu") {
             std::cout << "Running crack on CPU" << std::endl;
-            password_found = cpu_crack(hash_in, &file, result);
+            password_found = cpu_brute_force(hash_in, result);
         } else if (arg == "-gpu") {
             std::cout << "Running crack on GPU" << std::endl;
             password_found = gpu_crack(hash_in, &file, result);
