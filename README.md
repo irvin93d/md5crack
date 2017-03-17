@@ -3,7 +3,7 @@ GPU accelerated cracker for md5
 
 ## Compile the code
 This project was built using C++11, and CUDA v8.0.
-To build the project, you must have make installed. To compile the program, just rum `make`.
+To build the project, you must have make installed. To compile the program, just run `make`.
 
 ## To download the dictionary files used, and compile the program
 ```
